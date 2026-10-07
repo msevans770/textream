@@ -24,7 +24,7 @@ enum MarkdownScriptParser {
     private static let htmlComment = rx("<!--.*?-->", .dotMatchesLineSeparators)
     private static let obsidianComment = rx("%%.*?%%", .dotMatchesLineSeparators)
     private static let pageBreak = rx("^ {0,3}([-*_])(?:[ \\t]*\\1){2,}[ \\t]*$")
-    private static let heading = rx("^ {0,3}#{1,6}[ \\t]+(.*)$")
+    private static let heading = rx("^ {0,3}(#{1,6})[ \\t]+(.*)$")
     private static let closingHashes = rx("[ \\t]+#+[ \\t]*$")
     private static let footnoteDef = rx("^\\[\\^[^\\]]+\\]:")
     private static let tableSeparator = rx("^\\|?[\\s:\\-|]+\\|?$")
@@ -140,8 +140,11 @@ enum MarkdownScriptParser {
     private static func buildPages(_ lines: [String]) -> [String] {
         var pages: [String] = []
         var current: [String] = []
+        // True once the current page holds a non-heading, non-empty line.
+        var currentHasBody = false
 
         func flush() {
+            currentHasBody = false
             var page = current.joined(separator: "\n")
             current = []
             while page.contains("\n\n\n") {
@@ -151,14 +154,19 @@ enum MarkdownScriptParser {
             if !page.isEmpty { pages.append(page) }
         }
 
+        // A page break after a heading-only page keeps those headings for the next page.
+        func breakPage() {
+            if currentHasBody { flush() }
+        }
+
         for line in lines {
             if matches(pageBreak, line) {
-                flush()
+                breakPage()
                 continue
             }
             if let m = firstMatch(heading, line) {
-                flush()
-                var title = substring(line, m.range(at: 1))
+                if substring(line, m.range(at: 1)).count <= 2 { breakPage() }
+                var title = substring(line, m.range(at: 2))
                 title = replace(closingHashes, in: title, with: "")
                 current.append(stripInline(title))
                 continue
@@ -181,7 +189,14 @@ enum MarkdownScriptParser {
             } else {
                 text = replace(listMarker, in: text, with: "")
             }
-            current.append(stripInline(text))
+            let stripped = stripInline(text)
+            if stripped.isEmpty {
+                // Blank lines before any body text are not kept; they would split a heading from its page.
+                if currentHasBody { current.append(stripped) }
+                continue
+            }
+            currentHasBody = true
+            current.append(stripped)
         }
         flush()
         return pages

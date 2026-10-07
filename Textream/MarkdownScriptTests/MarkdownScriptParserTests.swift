@@ -21,7 +21,7 @@ final class MarkdownScriptParserTests: XCTestCase {
         XCTAssertEqual(parse("# Title\nBody"), ["Title\nBody"])
     }
     func testAllHeadingLevelsSplit() {
-        XCTAssertEqual(parse("## Two\ntext\n###### Six\nmore"), ["Two\ntext", "Six\nmore"])
+        XCTAssertEqual(parse("## Two\ntext\n###### Six\nmore"), ["Two\ntext\nSix\nmore"])
     }
     func testHeadingClosingHashesStripped() {
         XCTAssertEqual(parse("# Title #\nbody"), ["Title\nbody"])
@@ -150,5 +150,23 @@ final class MarkdownScriptParserTests: XCTestCase {
     }
     func testLongNumberIsNotListMarker() {
         XCTAssertEqual(parse("1984. A novel"), ["1984. A novel"])
+    }
+    func testLevelThreeHeadingDoesNotSplit() {
+        XCTAssertEqual(parse("## Sec\nintro\n### Sub\nmore"), ["Sec\nintro\nSub\nmore"])
+    }
+    func testHeadingOnlyStubMergesIntoNextPage() {
+        XCTAssertEqual(parse("# Title\n## Section\nbody"), ["Title\nSection\nbody"])
+    }
+    func testStubBeforeRuleMergesIntoNextPage() {
+        XCTAssertEqual(parse("## A\n---\nbody"), ["A\nbody"])
+    }
+    func testTrailingLoneHeadingIsKept() {
+        XCTAssertEqual(parse("# Only"), ["Only"])
+        XCTAssertEqual(parse("Intro\n## Last"), ["Intro", "Last"])
+    }
+    func testRealWorldShape() {
+        XCTAssertEqual(
+            parse("# Doc\n\n---\n\n## 1. Setup\n\n### Gear\nTent and stove.\n\n### Food\nRice.\n\n---\n\n## 2. Plan\nGo north."),
+            ["Doc\n1. Setup\nGear\nTent and stove.\n\nFood\nRice.", "2. Plan\nGo north."])
     }
 }
