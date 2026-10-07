@@ -33,6 +33,7 @@ enum MarkdownScriptParser {
     private static let linkDefinition = rx("^\\s*\\[[^\\]]+\\]:\\s*\\S+.*$")
     private static let leadingDate = rx(
         "^\\s*(?:#{1,6}\\s+)?\\d{1,4}[-/.]\\d{1,2}[-/.]\\d{1,4}(?:[ T]+\\d{1,2}:\\d{2}(?::\\d{2})?)?\\s*$")
+    private static let looseTableSeparator = rx("^\\s*:?-{3,}:?(?:\\s*\\|\\s*:?-{3,}:?)+\\s*\\|?\\s*$")
     private static let tableSeparator = rx("^\\|?[\\s:\\-|]+\\|?$")
     private static let blockquote = rx("^\\s*(>\\s?)+")
     private static let callout = rx("^\\[![A-Za-z-]+\\][+-]?\\s*")
@@ -56,7 +57,7 @@ enum MarkdownScriptParser {
         (rx("!\\[[^\\]]*\\]\\([^)]*\\)"), ""),
         (rx("!\\[\\[[^\\]]*\\]\\]"), ""),
         // wikilinks are handled separately, between embeds and links
-        (rx("\\[([^\\]]+)\\]\\([^)]*\\)"), "$1"),
+        (rx("\\[((?:[^\\[\\]]|\\[[^\\]]*\\])+)\\]\\([^)]*\\)"), "$1"),
         (rx("\\[\\^[^\\]]+\\]"), ""),
         (rx("</?[A-Za-z][^>]*>"), ""),
         (rx("\\*\\*(.+?)\\*\\*"), "$1"),
@@ -175,8 +176,11 @@ enum MarkdownScriptParser {
         var current: [String] = []
         // True once the current page holds a non-heading, non-empty line.
         var currentHasBody = false
+        var inTable = false
+        var lastPageHadBody = false
 
         func flush() {
+            let hadBody = currentHasBody
             currentHasBody = false
             var page = current.joined(separator: "\n")
             current = []
@@ -184,7 +188,17 @@ enum MarkdownScriptParser {
                 page = page.replacingOccurrences(of: "\n\n\n", with: "\n\n")
             }
             page = page.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !page.isEmpty { pages.append(page) }
+            if !page.isEmpty {
+                pages.append(page)
+                lastPageHadBody = hadBody
+            }
+        }
+
+        func joinCells(_ s: String) -> String {
+            s.components(separatedBy: "|")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
         }
 
         // A page break after a heading-only page keeps those headings for the next page.
@@ -207,9 +221,20 @@ enum MarkdownScriptParser {
             if matches(footnoteDef, line) || matches(linkDefinition, line) { continue }
             if matches(metadataLine, line) || matches(hashtagOnlyLine, line) { continue }
 
+            if matches(looseTableSeparator, line) {
+                if let prev = current.last, prev.contains("|") {
+                    current[current.count - 1] = joinCells(prev)
+                    inTable = true
+                }
+                continue
+            }
+
             var text = line
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("|") {
+            if !trimmed.contains("|") { inTable = false }
+            if inTable && !trimmed.hasPrefix("|") {
+                text = joinCells(trimmed)
+            } else if trimmed.hasPrefix("|") {
                 if trimmed.contains("-") && matches(tableSeparator, trimmed) { continue }
                 text = trimmed.components(separatedBy: "|")
                     .map { $0.trimmingCharacters(in: .whitespaces) }
@@ -233,6 +258,7 @@ enum MarkdownScriptParser {
             current.append(stripped)
         }
         flush()
+        if pages.count > 1 && !lastPageHadBody { pages.removeLast() }
         return pages
     }
 

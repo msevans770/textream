@@ -162,7 +162,7 @@ final class MarkdownScriptParserTests: XCTestCase {
     }
     func testTrailingLoneHeadingIsKept() {
         XCTAssertEqual(parse("# Only"), ["Only"])
-        XCTAssertEqual(parse("Intro\n## Last"), ["Intro", "Last"])
+        XCTAssertEqual(parse("Intro\n## Last"), ["Intro"])
     }
     func testRealWorldShape() {
         XCTAssertEqual(
@@ -202,5 +202,20 @@ final class MarkdownScriptParserTests: XCTestCase {
         XCTAssertEqual(
             parse("2025-02-16 08:01\n\nStatus: #Baby\n\nTags: Learning\n\n# Title\n\nBody text with **bold** and #idea.\n\n## References\nSee also: Foo\n\n#Review"),
             ["Title\nBody text with bold and."])
+    }
+    func testPipeTableWithoutLeadingPipes() {
+        XCTAssertEqual(
+            parse("Exercise | Sets | Notes\n---------|------|------\nSquat | 3 | 10\n         |      |\n\nAfter"),
+            ["Exercise Sets Notes\nSquat 3 10\n\nAfter"])
+        XCTAssertEqual(parse("Phase 1 done | Phase 2 todo"), ["Phase 1 done | Phase 2 todo"])
+    }
+    func testTrailingEmptyHeadingDropped() {
+        XCTAssertEqual(parse("# A\nbody\n\n## Notes"), ["A\nbody"])
+        XCTAssertEqual(parse("# Only"), ["Only"])
+    }
+    func testNestedBracketLinkText() {
+        XCTAssertEqual(parse("[Play \"NEXT [FREE DL]\"]() x"), ["Play \"NEXT [FREE DL]\" x"])
+        XCTAssertEqual(parse("[parse(): Document[]](http://x) ok"), ["parse(): Document[] ok"])
+        XCTAssertEqual(parse("[pause] fine"), ["[pause] fine"])
     }
 }
