@@ -28,7 +28,7 @@ final class MarkdownScriptParserTests: XCTestCase {
     }
     func testHashNotAHeadingMidLineOrWithoutSpace() {
         XCTAssertEqual(parse("Issue #5 is open"), ["Issue #5 is open"])
-        XCTAssertEqual(parse("#tag line"), ["#tag line"])
+        XCTAssertEqual(parse("#tag line"), ["line"])
     }
     func testEmptyPagesDropped() {
         XCTAssertEqual(parse("One\n---\n\n---\nTwo"), ["One", "Two"])
@@ -168,5 +168,39 @@ final class MarkdownScriptParserTests: XCTestCase {
         XCTAssertEqual(
             parse("# Doc\n\n---\n\n## 1. Setup\n\n### Gear\nTent and stove.\n\n### Food\nRice.\n\n---\n\n## 2. Plan\nGo north."),
             ["Doc\n1. Setup\nGear\nTent and stove.\n\nFood\nRice.", "2. Plan\nGo north."])
+    }
+    func testInlineHashtagsRemoved() {
+        XCTAssertEqual(parse("Going out #camper and #van/life today"), ["Going out and today"])
+        XCTAssertEqual(parse("C# rocks"), ["C# rocks"])
+        XCTAssertEqual(parse("see http://x.com/#frag now"), ["see http://x.com/#frag now"])
+        XCTAssertEqual(parse("Fish&#39;s"), ["Fish&#39;s"])
+    }
+    func testMetadataLinesDropped() {
+        XCTAssertEqual(parse("Hello\n\nTags: #a #b\n\nStatus: #Baby\n\n#Review\n\nBye"), ["Hello\n\nBye"])
+        XCTAssertEqual(parse("Tags: Learning Language\nBody"), ["Body"])
+    }
+    func testLeadingDateLineDropped() {
+        XCTAssertEqual(parse("2025-02-16 08:01\n\nBody"), ["Body"])
+        XCTAssertEqual(parse("# 05-12-25 20:20\nBody"), ["Body"])
+        XCTAssertEqual(parse("28-12-25 19:59"), [])
+        XCTAssertEqual(parse("Body\n\n2025-02-16 08:01"), ["Body\n\n2025-02-16 08:01"])
+    }
+    func testReferencesFooterDropped() {
+        XCTAssertEqual(parse("# A\nbody\n\n## References\nSee also: x"), ["A\nbody"])
+        XCTAssertEqual(parse("## References\nx"), ["References\nx"])
+    }
+    func testReferenceStyleLinks() {
+        XCTAssertEqual(parse("See [docs][d] and ![img][i] done\n\n[d]: http://x\n[i]: http://y"), ["See docs and done"])
+        XCTAssertEqual(parse("[![Badge][b]][l] text"), ["text"])
+        XCTAssertEqual(parse("[](http://x) text"), ["text"])
+    }
+    func testStrayBoldMarkers() {
+        XCTAssertEqual(parse("Psychological**: tip"), ["Psychological: tip"])
+        XCTAssertEqual(parse("censored with ***"), ["censored with ***"])
+    }
+    func testRealVaultShape() {
+        XCTAssertEqual(
+            parse("2025-02-16 08:01\n\nStatus: #Baby\n\nTags: Learning\n\n# Title\n\nBody text with **bold** and #idea.\n\n## References\nSee also: Foo\n\n#Review"),
+            ["Title\nBody text with bold and."])
     }
 }

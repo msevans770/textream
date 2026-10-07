@@ -16,7 +16,8 @@
 - Work in `/Users/user/Developer/textream` on branch `feature/markdown-linked-scripts`. New commits, never amends. **Never push.** Subagents do **not** commit. The overseer commits after reviewing each task.
 - New app files go in `Textream/Textream/` (Xcode uses synchronized folders, so they are auto-included in the app target). Do not edit `project.pbxproj`.
 - The two Foundation-only files (`MarkdownScriptParser.swift`, `LinkedScriptStore.swift`) must import only `Foundation` (no AppKit/SwiftUI) so SwiftPM can compile them.
-- Page splitting: a horizontal rule line (`---`, `***`, `___`, spaced variants) **or** an ATX heading line (`#`–`######`) starts a new page. Heading text is kept as spoken text with the `#`s removed.
+- Page splitting (revised after testing on the user's vault): a horizontal rule line (`---`, `***`, `___`, spaced variants) **or** a level 1 or 2 heading (`#`, `##`) starts a new page. Level 3–6 headings stay inside their section as plain text. A page that is only headings merges into the next page. Heading text is kept as spoken text with the `#`s removed.
+- Vault conventions (added after testing): inline `#hashtags` are removed; lines starting `Tags:` / `Status:` and hashtag-only lines are dropped; a leading date/timestamp line is dropped; a trailing `References` page is dropped when there is more than one page; reference-style links/images, empty links and link definitions are handled; stray `**` attached to words is removed.
 - Strip: frontmatter, fenced code blocks (contents included), `<!-- -->` comments, `%% %%` Obsidian comments, images `![](…)`, embeds `![[…]]`, footnote refs/defs, HTML tags, emphasis markers, inline-code backticks, list/task/blockquote/callout markers. `[text](url)` becomes `text`. `[[Page|Alias]]` becomes `Alias`, `[[Page#Heading]]` becomes `Page`. Tables flatten to cell text joined by single spaces, one row per line.
 - Keep teleprompter cue brackets such as `[pause]`, `[smile]` exactly as written. The app depends on them (`HighlightingTextEditor` italicises them and `SpeechRecognizer` auto-skips them).
 - `.txt` files: no Markdown stripping and no heading splitting. Only `---` rule lines split pages.
@@ -30,7 +31,7 @@
 
 1. **Cue brackets vs links** — `[pause] see [docs](http://x) [smile]` must become `[pause] see docs [smile]` (Task 1 test `testCueNextToLinkPreserved`).
 2. **File changes between plays** — linked file deleted, moved, emptied or made unreadable: prompter still plays the last good pages and a warning shows (Task 2 tests `testLoadPagesEmptyFileThrowsEmpty`, `testLoadPagesMissingFileThrows`; Task 4 `refreshLinkedScript` keeps pages on failure).
-3. **Ordinary prose is not mangled** — `my_var_name`, `2*3*4`, `Issue #5`, `#tag` must pass through untouched (Task 1 tests).
+3. **Ordinary prose is not mangled** — `my_var_name`, `2*3*4`, `Issue #5`, `C#` must pass through untouched (Task 1 tests). (`#tag` words are now removed as Obsidian tags.)
 4. **Save never clobbers the `.md`** — Save / Save As while linked writes JSON only to a `.textream` file the user chose (Task 4 `saveToURL` change, checked in Task 7 manual checklist).
 5. **Odd inputs** — CRLF, BOM, unclosed frontmatter, unclosed code fence, non-UTF-8 file, link page count shrinking below `currentPageIndex` (Tasks 1, 2, 4).
 

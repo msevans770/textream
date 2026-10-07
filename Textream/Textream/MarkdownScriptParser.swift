@@ -11,7 +11,8 @@ enum MarkdownScriptParser {
         lines = dropFrontmatter(lines)
         lines = dropFencedCode(lines)
         let withoutComments = dropComments(lines.joined(separator: "\n"))
-        return buildPages(withoutComments.components(separatedBy: "\n"))
+        let body = dropLeadingDateLine(withoutComments.components(separatedBy: "\n"))
+        return dropReferencesFooter(buildPages(body))
     }
 
     // MARK: - Regexes
@@ -27,6 +28,11 @@ enum MarkdownScriptParser {
     private static let heading = rx("^ {0,3}(#{1,6})[ \\t]+(.*)$")
     private static let closingHashes = rx("[ \\t]+#+[ \\t]*$")
     private static let footnoteDef = rx("^\\[\\^[^\\]]+\\]:")
+    private static let metadataLine = rx("^\\s*(?:Tags?|Status)\\s*:.*$", .caseInsensitive)
+    private static let hashtagOnlyLine = rx("^\\s*(?:[A-Za-z ]{1,20}:\\s*)?(?:#[A-Za-z][\\w/-]*\\s*)+$")
+    private static let linkDefinition = rx("^\\s*\\[[^\\]]+\\]:\\s*\\S+.*$")
+    private static let leadingDate = rx(
+        "^\\s*(?:#{1,6}\\s+)?\\d{1,4}[-/.]\\d{1,2}[-/.]\\d{1,4}(?:[ T]+\\d{1,2}:\\d{2}(?::\\d{2})?)?\\s*$")
     private static let tableSeparator = rx("^\\|?[\\s:\\-|]+\\|?$")
     private static let blockquote = rx("^\\s*(>\\s?)+")
     private static let callout = rx("^\\[![A-Za-z-]+\\][+-]?\\s*")
@@ -34,6 +40,14 @@ enum MarkdownScriptParser {
     private static let listMarker = rx("^\\s*(?:[-*+]|\\d{1,3}[.)])\\s+")
     private static let wikilink = rx("\\[\\[([^\\]|#]+)(?:#[^\\]|]*)?(?:\\|([^\\]]+))?\\]\\]")
     private static let spaces = rx("[ \\t]+")
+
+    /// Reference-style images, reference links and empty links, applied before inline links.
+    private static let referenceRules: [(NSRegularExpression, String)] = [
+        (rx("!\\[[^\\]]*\\]\\[[^\\]]*\\]"), ""),
+        (rx("\\[([^\\]]+)\\]\\[[^\\]]*\\]"), "$1"),
+        (rx("\\[\\]\\([^)]*\\)"), ""),
+        (rx("\\[\\]\\[[^\\]]*\\]"), ""),
+    ]
 
     private static let br = rx("<br\\s*/?>", .caseInsensitive)
 
@@ -46,12 +60,15 @@ enum MarkdownScriptParser {
         (rx("\\[\\^[^\\]]+\\]"), ""),
         (rx("</?[A-Za-z][^>]*>"), ""),
         (rx("\\*\\*(.+?)\\*\\*"), "$1"),
+        (rx("(?<=\\w)\\*\\*|\\*\\*(?=\\w)"), ""),
         (rx("~~(.+?)~~"), "$1"),
         (rx("==(?=[^\\s=])(.+?)(?<=[^\\s=])=="), "$1"),
         (rx("(?<![A-Za-z0-9_])__(.+?)__(?![A-Za-z0-9_])"), "$1"),
         (rx("(?<![A-Za-z0-9*])\\*(?!\\s)(.+?)(?<![\\s*])\\*(?![A-Za-z0-9*])"), "$1"),
         (rx("(?<![A-Za-z0-9_])_(?!\\s)(.+?)(?<![\\s_])_(?![A-Za-z0-9_])"), "$1"),
         (rx("`([^`]+)`"), "$1"),
+        (rx("[ \\t]+#[A-Za-z][\\w/-]*(?=[.,;:!?])"), ""),
+        (rx("(?<![\\w&/#])#[A-Za-z][\\w/-]*"), ""),
     ]
 
     // MARK: - Stages
@@ -137,6 +154,22 @@ enum MarkdownScriptParser {
         return s
     }
 
+    private static func dropLeadingDateLine(_ lines: [String]) -> [String] {
+        guard let i = lines.firstIndex(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }),
+              matches(leadingDate, lines[i]) else { return lines }
+        var out = lines
+        out.remove(at: i)
+        return out
+    }
+
+    private static func dropReferencesFooter(_ pages: [String]) -> [String] {
+        guard pages.count > 1, let last = pages.last else { return pages }
+        var first = (last.components(separatedBy: "\n").first ?? "")
+            .trimmingCharacters(in: .whitespaces).lowercased()
+        if first.hasSuffix(":") { first.removeLast() }
+        return first == "references" ? Array(pages.dropLast()) : pages
+    }
+
     private static func buildPages(_ lines: [String]) -> [String] {
         var pages: [String] = []
         var current: [String] = []
@@ -171,7 +204,8 @@ enum MarkdownScriptParser {
                 current.append(stripInline(title))
                 continue
             }
-            if matches(footnoteDef, line) { continue }
+            if matches(footnoteDef, line) || matches(linkDefinition, line) { continue }
+            if matches(metadataLine, line) || matches(hashtagOnlyLine, line) { continue }
 
             var text = line
             let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -207,6 +241,9 @@ enum MarkdownScriptParser {
         // images and embeds first
         s = replace(inlineRules[0].0, in: s, with: inlineRules[0].1)
         s = replace(inlineRules[1].0, in: s, with: inlineRules[1].1)
+        for (regex, template) in referenceRules {
+            s = replace(regex, in: s, with: template)
+        }
         s = replaceWikilinks(s)
         for (regex, template) in inlineRules.dropFirst(2) {
             s = replace(regex, in: s, with: template)
