@@ -35,3 +35,6 @@ Pods/
 *~
 *.orig
 *.log
+
+Textream/.build/
+.superpowers/
