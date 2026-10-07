@@ -50,6 +50,9 @@ enum MarkdownScriptParser {
         (rx("\\[\\]\\[[^\\]]*\\]"), ""),
     ]
 
+    /// A level 1-2 heading only starts a new page once the current one has this many words; prevents tiny teleprompter pages.
+    private static let minPageWords = 40
+
     private static let br = rx("<br\\s*/?>", .caseInsensitive)
 
     /// Simple replacements applied in order, each with a `$1`-style template.
@@ -171,6 +174,10 @@ enum MarkdownScriptParser {
         return first == "references" ? Array(pages.dropLast()) : pages
     }
 
+    private static func wordCount(_ lines: [String]) -> Int {
+        lines.reduce(0) { $0 + $1.split(whereSeparator: { $0.isWhitespace }).count }
+    }
+
     private static func buildPages(_ lines: [String]) -> [String] {
         var pages: [String] = []
         var current: [String] = []
@@ -212,10 +219,17 @@ enum MarkdownScriptParser {
                 continue
             }
             if let m = firstMatch(heading, line) {
-                if substring(line, m.range(at: 1)).count <= 2 { breakPage() }
                 var title = substring(line, m.range(at: 2))
                 title = replace(closingHashes, in: title, with: "")
-                current.append(stripInline(title))
+                let cleaned = stripInline(title)
+                var key = cleaned.trimmingCharacters(in: .whitespaces).lowercased()
+                if key.hasSuffix(":") { key.removeLast() }
+                // A References heading of any level always starts its own page so the footer can be dropped.
+                if key == "references"
+                    || (substring(line, m.range(at: 1)).count <= 2 && wordCount(current) >= minPageWords) {
+                    breakPage()
+                }
+                current.append(cleaned)
                 continue
             }
             if matches(footnoteDef, line) || matches(linkDefinition, line) { continue }

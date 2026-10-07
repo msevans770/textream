@@ -4,6 +4,10 @@ import XCTest
 final class MarkdownScriptParserTests: XCTestCase {
     private func parse(_ s: String) -> [String] { MarkdownScriptParser.parse(s) }
 
+    private func filler(_ n: Int = 45) -> String {
+        Array(repeating: "word", count: n).joined(separator: " ")
+    }
+
     // MARK: Pages
     func testPlainParagraphIsOnePage() {
         XCTAssertEqual(parse("Hello world."), ["Hello world."])
@@ -15,7 +19,8 @@ final class MarkdownScriptParserTests: XCTestCase {
         XCTAssertEqual(parse("A\n***\nB\n___\nC\n- - -\nD"), ["A", "B", "C", "D"])
     }
     func testHeadingStartsNewPageAndKeepsText() {
-        XCTAssertEqual(parse("Intro text\n\n# Next\nBody"), ["Intro text", "Next\nBody"])
+        let f = filler()
+        XCTAssertEqual(parse("Intro text \(f)\n\n# Next\nBody"), ["Intro text \(f)", "Next\nBody"])
     }
     func testLeadingHeadingDoesNotCreateEmptyFirstPage() {
         XCTAssertEqual(parse("# Title\nBody"), ["Title\nBody"])
@@ -162,7 +167,7 @@ final class MarkdownScriptParserTests: XCTestCase {
     }
     func testTrailingLoneHeadingIsKept() {
         XCTAssertEqual(parse("# Only"), ["Only"])
-        XCTAssertEqual(parse("Intro\n## Last"), ["Intro"])
+        XCTAssertEqual(parse("\(filler())\n## Last"), [filler()])
     }
     func testRealWorldShape() {
         XCTAssertEqual(
@@ -186,7 +191,7 @@ final class MarkdownScriptParserTests: XCTestCase {
         XCTAssertEqual(parse("Body\n\n2025-02-16 08:01"), ["Body\n\n2025-02-16 08:01"])
     }
     func testReferencesFooterDropped() {
-        XCTAssertEqual(parse("# A\nbody\n\n## References\nSee also: x"), ["A\nbody"])
+        XCTAssertEqual(parse("# A\n\(filler())\n\n## References\nSee also: x"), ["A\n\(filler())"])
         XCTAssertEqual(parse("## References\nx"), ["References\nx"])
     }
     func testReferenceStyleLinks() {
@@ -200,8 +205,8 @@ final class MarkdownScriptParserTests: XCTestCase {
     }
     func testRealVaultShape() {
         XCTAssertEqual(
-            parse("2025-02-16 08:01\n\nStatus: #Baby\n\nTags: Learning\n\n# Title\n\nBody text with **bold** and #idea.\n\n## References\nSee also: Foo\n\n#Review"),
-            ["Title\nBody text with bold and."])
+            parse("2025-02-16 08:01\n\nStatus: #Baby\n\nTags: Learning\n\n# Title\n\nBody text with **bold** and #idea. \(filler())\n\n## References\nSee also: Foo\n\n#Review"),
+            ["Title\nBody text with bold and. \(filler())"])
     }
     func testPipeTableWithoutLeadingPipes() {
         XCTAssertEqual(
@@ -210,12 +215,38 @@ final class MarkdownScriptParserTests: XCTestCase {
         XCTAssertEqual(parse("Phase 1 done | Phase 2 todo"), ["Phase 1 done | Phase 2 todo"])
     }
     func testTrailingEmptyHeadingDropped() {
-        XCTAssertEqual(parse("# A\nbody\n\n## Notes"), ["A\nbody"])
+        XCTAssertEqual(parse("# A\n\(filler())\n\n## Notes"), ["A\n\(filler())"])
         XCTAssertEqual(parse("# Only"), ["Only"])
     }
     func testNestedBracketLinkText() {
         XCTAssertEqual(parse("[Play \"NEXT [FREE DL]\"]() x"), ["Play \"NEXT [FREE DL]\" x"])
         XCTAssertEqual(parse("[parse(): Document[]](http://x) ok"), ["parse(): Document[] ok"])
         XCTAssertEqual(parse("[pause] fine"), ["[pause] fine"])
+    }
+    func testShortSectionsMergeUnderThreshold() {
+        XCTAssertEqual(parse("## A\nfew words here\n## B\nmore words"), ["A\nfew words here\nB\nmore words"])
+    }
+    func testLongSectionStillSplits() {
+        let body = filler(45)
+        XCTAssertEqual(parse("## A\n" + body + "\n## B\nx"), ["A\n" + body, "B\nx"])
+    }
+    func testRuleAlwaysSplitsEvenWhenShort() {
+        XCTAssertEqual(parse("## A\nshort\n---\nB short"), ["A\nshort", "B short"])
+    }
+    func testThresholdBoundary() {
+        // Heading "A" counts as one word, so 38 body words make 39 and 39 make 40.
+        let b38 = filler(38), b39 = filler(39)
+        XCTAssertEqual(parse("## A\n" + b38 + "\n## B\nx"), ["A\n" + b38 + "\nB\nx"])
+        XCTAssertEqual(parse("## A\n" + b39 + "\n## B\nx"), ["A\n" + b39, "B\nx"])
+    }
+    func testReferencesHeadingSplitsEvenWhenShort() {
+        XCTAssertEqual(parse("## Intro\nshort bit\n## References\nSee also: x"), ["Intro\nshort bit"])
+        XCTAssertEqual(parse("Intro\n\n## Notes\nshort\n\n## References\nSee also: x"), ["Intro\n\nNotes\nshort"])
+    }
+    func testDeepReferencesHeadingSplitsAndIsDropped() {
+        let f = filler(45)
+        XCTAssertEqual(parse("# A\n" + f + "\n### Detail\nshort\n### References\nSee also: x"), ["A\n" + f + "\nDetail\nshort"])
+        XCTAssertEqual(parse("Intro\n\n#### References\nx"), ["Intro"])
+        XCTAssertEqual(parse("Intro\n\n### **References**:\nx"), ["Intro"])
     }
 }
