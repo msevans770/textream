@@ -143,4 +143,12 @@ final class MarkdownScriptParserTests: XCTestCase {
     func testPlainTextModeHandlesCRLF() {
         XCTAssertEqual(MarkdownScriptParser.parse("A\r\n---\r\nB", isPlainText: true), ["A", "B"])
     }
+
+    func testHighlightRuleIgnoresProseEquals() {
+        XCTAssertEqual(parse("x == y and z == w"), ["x == y and z == w"])
+        XCTAssertEqual(parse("==h=="), ["h"])
+    }
+    func testLongNumberIsNotListMarker() {
+        XCTAssertEqual(parse("1984. A novel"), ["1984. A novel"])
+    }
 }

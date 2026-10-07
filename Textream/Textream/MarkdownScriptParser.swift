@@ -31,7 +31,7 @@ enum MarkdownScriptParser {
     private static let blockquote = rx("^\\s*(>\\s?)+")
     private static let callout = rx("^\\[![A-Za-z-]+\\][+-]?\\s*")
     private static let taskMarker = rx("^\\s*[-*+]\\s+\\[[ xX]\\]\\s+")
-    private static let listMarker = rx("^\\s*(?:[-*+]|\\d+[.)])\\s+")
+    private static let listMarker = rx("^\\s*(?:[-*+]|\\d{1,3}[.)])\\s+")
     private static let wikilink = rx("\\[\\[([^\\]|#]+)(?:#[^\\]|]*)?(?:\\|([^\\]]+))?\\]\\]")
     private static let spaces = rx("[ \\t]+")
 
@@ -47,7 +47,7 @@ enum MarkdownScriptParser {
         (rx("</?[A-Za-z][^>]*>"), ""),
         (rx("\\*\\*(.+?)\\*\\*"), "$1"),
         (rx("~~(.+?)~~"), "$1"),
-        (rx("==(.+?)=="), "$1"),
+        (rx("==(?=[^\\s=])(.+?)(?<=[^\\s=])=="), "$1"),
         (rx("(?<![A-Za-z0-9_])__(.+?)__(?![A-Za-z0-9_])"), "$1"),
         (rx("(?<![A-Za-z0-9*])\\*(?!\\s)(.+?)(?<![\\s*])\\*(?![A-Za-z0-9*])"), "$1"),
         (rx("(?<![A-Za-z0-9_])_(?!\\s)(.+?)(?<![\\s_])_(?![A-Za-z0-9_])"), "$1"),

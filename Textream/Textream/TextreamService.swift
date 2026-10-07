@@ -343,7 +343,8 @@ class TextreamService: NSObject, ObservableObject {
     }
 
     private func storeBookmark(for url: URL) {
-        UserDefaults.standard.removeObject(forKey: Self.linkedScriptBookmarkDefaultsKey)
+        let started = url.startAccessingSecurityScopedResource()
+        defer { if started { url.stopAccessingSecurityScopedResource() } }
         if let data = try? LinkedScriptStore.makeBookmark(for: url) {
             UserDefaults.standard.set(data, forKey: Self.linkedScriptBookmarkDefaultsKey)
         }
@@ -374,6 +375,7 @@ class TextreamService: NSObject, ObservableObject {
     }
 
     func linkScript(_ url: URL) {
+        if overlayController.isShowing { return }
         guard confirmDiscardIfNeeded() else { return }
         let loaded: [String]
         do {
@@ -401,11 +403,13 @@ class TextreamService: NSObject, ObservableObject {
     @discardableResult
     func refreshLinkedScript() -> Bool {
         guard let linkedURL = linkedScriptURL else { return true }
+        if overlayController.isShowing { return true }
         var url = linkedURL
+        var needsRestore = false
         if let data = linkedScriptBookmarkData(),
            let resolved = try? LinkedScriptStore.resolveBookmark(data) {
             url = resolved.url
-            if resolved.isStale { storeBookmark(for: url) }
+            needsRestore = resolved.isStale
         }
         do {
             let newPages = try LinkedScriptStore.loadPages(from: url)
@@ -415,6 +419,7 @@ class TextreamService: NSObject, ObservableObject {
                 currentPageIndex = min(currentPageIndex, max(pages.count - 1, 0))
             }
             if url != linkedURL { linkedScriptURL = url }
+            if needsRestore { storeBookmark(for: url) }
             linkedScriptWarning = nil
             return true
         } catch {
@@ -431,9 +436,18 @@ class TextreamService: NSObject, ObservableObject {
 
     /// Restores the link from the stored bookmark. Silent on failure; safe to call repeatedly.
     func restoreLinkedScript() {
-        guard linkedScriptURL == nil, let data = linkedScriptBookmarkData() else { return }
+        guard linkedScriptURL == nil, !overlayController.isShowing,
+              let data = linkedScriptBookmarkData() else { return }
+        let resolved: (url: URL, isStale: Bool)
         do {
-            let resolved = try LinkedScriptStore.resolveBookmark(data)
+            resolved = try LinkedScriptStore.resolveBookmark(data)
+        } catch LinkedScriptError.bookmarkInvalid {
+            UserDefaults.standard.removeObject(forKey: Self.linkedScriptBookmarkDefaultsKey)
+            return
+        } catch {
+            return
+        }
+        do {
             let loaded = try LinkedScriptStore.loadPages(from: resolved.url)
             pages = loaded
             savedPages = loaded
@@ -441,7 +455,8 @@ class TextreamService: NSObject, ObservableObject {
             linkedScriptURL = resolved.url
             if resolved.isStale { storeBookmark(for: resolved.url) }
         } catch {
-            UserDefaults.standard.removeObject(forKey: Self.linkedScriptBookmarkDefaultsKey)
+            linkedScriptURL = resolved.url
+            linkedScriptWarning = "Couldn't read \(resolved.url.lastPathComponent): \(error.localizedDescription). It will be re-read when you press Play."
         }
     }
 
@@ -487,6 +502,8 @@ class TextreamService: NSObject, ObservableObject {
     }
 
     func setTextFromDirector(_ text: String) {
+        // Director text is ignored while a script is linked: it would replace the linked pages.
+        if isScriptLinked { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
@@ -540,6 +557,8 @@ class TextreamService: NSObject, ObservableObject {
 
     func updateTextFromDirector(_ text: String, readCharCount: Int) {
         guard directorIsReading else { return }
+        // Director text is ignored while a script is linked: it would replace the linked pages.
+        if isScriptLinked { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
