@@ -61,6 +61,8 @@ Happy presenting! [wave]
         service.pages.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
+    private var canPlay: Bool { hasAnyContent || service.isScriptLinked }
+
     private var isRecording: Bool {
         dictation.isRecording || dictation.isStarting
     }
@@ -411,8 +413,8 @@ Happy presenting! [wave]
                                     .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
                             }
                             .buttonStyle(.plain)
-                            .disabled((!isRunning && !hasAnyContent) || isRecording)
-                            .opacity((!hasAnyContent && !isRunning) || isRecording ? 0.4 : 1)
+                            .disabled((!isRunning && !canPlay) || isRecording)
+                            .opacity((!canPlay && !isRunning) || isRecording ? 0.4 : 1)
                         }
                     }
                     .padding(20)
@@ -655,7 +657,7 @@ Happy presenting! [wave]
         .onReceive(NotificationCenter.default.publisher(for: .startPrompter)) { _ in
             // ⌘↩ from the editor. The main window hides while the prompter runs,
             // so this only ever starts; Esc stops from the overlay.
-            guard !isRunning, !isRecording, hasAnyContent else { return }
+            guard !isRunning, !isRecording, canPlay else { return }
             isTextFocused = false
             run()
         }
@@ -810,7 +812,7 @@ Happy presenting! [wave]
     }
 
     private func run() {
-        guard hasAnyContent else { return }
+        guard canPlay else { return }
         // Re-read the linked file (if any) so edits made elsewhere are picked up
         service.refreshLinkedScript()
         guard hasAnyContent else { return }
